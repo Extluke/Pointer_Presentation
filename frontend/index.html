@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>El Presentasi - Dashboard</title>
+    <script>
+      (function() {
+        const errorQueue = [];
+        const originalLog = console.log;
+        const originalError = console.error;
+        const originalWarn = console.warn;
+
+        const safeStringify = (val) => {
+          try {
+            if (val === null) return 'null';
+            if (val === undefined) return 'undefined';
+            if (typeof val === 'object') {
+              if (val instanceof Error) {
+                return `${val.name}: ${val.message}\n${val.stack}`;
+              }
+              return JSON.stringify(val);
+            }
+            return String(val);
+          } catch (e) {
+            return `[Unserializable Object: ${val.constructor ? val.constructor.name : typeof val}]`;
+          }
+        };
+
+        window.onerror = function(message, source, lineno, colno, error) {
+          const msg = `${message} at ${source}:${lineno}:${colno}`;
+          errorQueue.push({level: 'exception', message: msg});
+          return false;
+        };
+
+        console.log = function(...args) {
+          try {
+            originalLog.apply(console, args);
+          } catch(e) {}
+          const msg = args.map(safeStringify).join(' ');
+          errorQueue.push({level: 'info', message: msg});
+        };
+        console.error = function(...args) {
+          try {
+            originalError.apply(console, args);
+          } catch(e) {}
+          const msg = args.map(safeStringify).join(' ');
+          errorQueue.push({level: 'error', message: msg});
+        };
+        console.warn = function(...args) {
+          try {
+            originalWarn.apply(console, args);
+          } catch(e) {}
+          const msg = args.map(safeStringify).join(' ');
+          errorQueue.push({level: 'warn', message: msg});
+        };
+
+        const initLogger = () => {
+          try {
+            const logToPython = (level, message) => {
+              if (window.pywebview && window.pywebview.api && window.pywebview.api.js_log) {
+                window.pywebview.api.js_log(level, message);
+              }
+            };
+            
+            console.log = function(...args) {
+              try {
+                originalLog.apply(console, args);
+              } catch(e) {}
+              logToPython('info', args.map(safeStringify).join(' '));
+            };
+            console.error = function(...args) {
+              try {
+                originalError.apply(console, args);
+              } catch(e) {}
+              logToPython('error', args.map(safeStringify).join(' '));
+            };
+            console.warn = function(...args) {
+              try {
+                originalWarn.apply(console, args);
+              } catch(e) {}
+              logToPython('warn', args.map(safeStringify).join(' '));
+            };
+            window.onerror = function(message, source, lineno, colno, error) {
+              logToPython('exception', `${message} at ${source}:${lineno}:${colno}`);
+              return false;
+            };
+
+            while (errorQueue.length > 0) {
+              const item = errorQueue.shift();
+              logToPython(item.level, "[Queued] " + item.message);
+            }
+            
+            logToPython('info', 'JS logger initialized and queue flushed.');
+          } catch (e) {
+            try { originalError('Failed to initialize JS to Python logger:', e); } catch(_) {}
+          }
+        };
+
+        if (window.pywebview && window.pywebview.api) {
+          initLogger();
+        } else {
+          window.addEventListener('pywebviewready', initLogger);
+        }
+      })();
+    </script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <div class="logo">
+        <i class="fa-solid fa-wand-magic-sparkles"></i>
+        El Presentasi
+      </div>
+      <div id="connection-status" class="status-badge badge-warning">
+        Connecting...
+      </div>
+    </header>
+
+    <div class="container">
+      <div class="glass-panel video-section">
+        <div class="video-container">
+          <div class="video-placeholder" id="video-placeholder">
+            <i class="fa-solid fa-camera-slash"></i>
+            <p>Video Feed Offline</p>
+          </div>
+          <img
+            id="video-stream"
+            src=""
+            alt="Video Feed"
+            style="display: none"
+          />
+        </div>
+
+        <div
+          class="status-container"
+          style="flex-direction: row; flex-wrap: wrap"
+        >
+          <div class="status-card" style="flex: 1">
+            <div class="status-label">Gestur Terakhir</div>
+            <div class="status-value" id="val-gesture">--</div>
+          </div>
+          <div class="status-card" style="flex: 1">
+            <div class="status-label">Target ID</div>
+            <div class="status-value" id="val-locked-id">--</div>
+          </div>
+        </div>
+
+        <section class="document-section" aria-labelledby="document-title">
+          <div class="document-heading">
+            <div>
+              <h2 id="document-title">
+                <i class="fa-solid fa-folder-open"></i> Pencari Dokumen Lokal
+              </h2>
+              <p>
+                Temukan versi dokumen yang tepat tanpa menelusuri folder satu
+                per satu.
+              </p>
+            </div>
+          </div>
+          <div class="document-search-row">
+            <input
+              type="search"
+              id="document-query"
+              placeholder="Contoh: laporan keuangan April"
+              aria-label="Kata kunci pencarian dokumen"
+            />
+            <button
+              class="btn btn-primary"
+              id="document-search-button"
+              onclick="searchDocuments(false)"
+            >
+              <i class="fa-solid fa-magnifying-glass"></i> Cari
+            </button>
+            <button
+              class="btn"
+              id="document-refresh-button"
+              onclick="searchDocuments(true)"
+            >
+              <i class="fa-solid fa-rotate"></i> Scan Ulang
+            </button>
+          </div>
+          <div class="document-message" id="document-message">
+            Cari dokumen lokal melalui dashboard atau perintah suara.
+          </div>
+          <div class="document-results" id="document-results"></div>
+          <p class="document-help">
+            Perintah suara: &ldquo;cari dokumen proposal kegiatan&rdquo;, lalu &ldquo;buka nomor satu&rdquo;.
+          </p>
+        </section>
+      </div>
+
+      <div class="glass-panel">
+        <div class="controls-grid">
+          <button class="btn btn-success" onclick="apiCall('start')">
+            <i class="fa-solid fa-play"></i> Start Engine
+          </button>
+          <button class="btn btn-danger" onclick="apiCall('stop')">
+            <i class="fa-solid fa-stop"></i> Stop Engine
+          </button>
+          <button class="btn" onclick="apiCall('lock')">
+            <i class="fa-solid fa-lock"></i> Lock Target
+          </button>
+          <button class="btn" onclick="apiCall('unlock')">
+            <i class="fa-solid fa-unlock"></i> Unlock Target
+          </button>
+        </div>
+        <button class="btn" id="btn-toggle-laser" onclick="toggleLaser()" style="width: 100%; margin-top: 0.5rem; margin-bottom: 1rem; border-radius: 18px; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+          <i class="fa-solid fa-circle-dot"></i> Aktifkan Laser Pointer
+        </button>
+
+        <div class="status-card" style="margin-bottom: 1rem">
+          <div class="status-label">Status Engine</div>
+          <div class="status-badge badge-inactive" id="status-engine">
+            OFFLINE
+          </div>
+        </div>
+
+        <!-- Sumber Kamera -->
+        <div class="camera-source-selector" style="margin-bottom: 1.5rem;">
+          <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.25rem;">
+            <i class="fa-solid fa-camera"></i> Sumber Input Kamera:
+          </div>
+          <select id="camera-device-select" class="custom-select" onchange="onCameraDeviceChange(event)">
+            <option value="default">Memuat daftar kamera...</option>
+          </select>
+        </div>
+
+        <div class="software-selector">
+          <h3><i class="fa-solid fa-layer-group"></i> Software Profil</h3>
+          <div class="software-vertical-grid" style="display: flex; flex-direction: column; gap: 0.5rem;">
+            <div style="display: flex; gap: 0.5rem; width: 100%;">
+              <button
+                class="software-btn active"
+                id="btn-ppt"
+                onclick="setSoftware('ppt')"
+                style="flex: 1; margin: 0;"
+              >
+                PowerPoint
+              </button>
+              <button
+                class="btn"
+                onclick="openSoftwareApp('ppt')"
+                title="Buka PowerPoint"
+                style="padding: 0 1rem; border-radius: 18px; display: flex; align-items: center; justify-content: center; height: auto;"
+              >
+                <i class="fa-solid fa-up-right-from-square"></i>
+              </button>
+            </div>
+            <div style="display: flex; gap: 0.5rem; width: 100%;">
+              <button
+                class="software-btn"
+                id="btn-canva"
+                onclick="setSoftware('canva')"
+                style="flex: 1; margin: 0;"
+              >
+                Canva
+              </button>
+              <button
+                class="btn"
+                onclick="openSoftwareApp('canva')"
+                title="Buka Canva"
+                style="padding: 0 1rem; border-radius: 18px; display: flex; align-items: center; justify-content: center; height: auto;"
+              >
+                <i class="fa-solid fa-up-right-from-square"></i>
+              </button>
+            </div>
+            <div style="display: flex; gap: 0.5rem; width: 100%;">
+              <button
+                class="software-btn"
+                id="btn-figma"
+                onclick="setSoftware('figma')"
+                style="flex: 1; margin: 0;"
+              >
+                Figma
+              </button>
+              <button
+                class="btn"
+                onclick="openSoftwareApp('figma')"
+                title="Buka Figma"
+                style="padding: 0 1rem; border-radius: 18px; display: flex; align-items: center; justify-content: center; height: auto;"
+              >
+                <i class="fa-solid fa-up-right-from-square"></i>
+              </button>
+            </div>
+            <div style="display: flex; gap: 0.5rem; width: 100%;">
+              <button
+                class="software-btn"
+                id="btn-notion"
+                onclick="setSoftware('notion')"
+                style="flex: 1; margin: 0;"
+              >
+                Notion
+              </button>
+              <button
+                class="btn"
+                onclick="openSoftwareApp('notion')"
+                title="Buka Notion"
+                style="padding: 0 1rem; border-radius: 18px; display: flex; align-items: center; justify-content: center; height: auto;"
+              >
+                <i class="fa-solid fa-up-right-from-square"></i>
+              </button>
+            </div>
+            <div style="display: flex; gap: 0.5rem; width: 100%;">
+              <button
+                class="software-btn"
+                id="btn-global"
+                onclick="setSoftware('global')"
+                style="flex: 1; margin: 0;"
+              >
+                Semua Aplikasi (Global)
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="voice-section">
+          <h3>
+            <i class="fa-solid fa-microphone" id="voice-icon"></i> Voice Typer
+            <span
+              id="voice-status-badge"
+              class="status-badge badge-inactive"
+              style="margin-left: auto"
+              >Idle</span
+            >
+          </h3>
+
+          <!-- Sumber Suara / Mode Selector -->
+          <div class="voice-source-selector" style="margin-bottom: 0.75rem;">
+            <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.35rem;">Sumber Input Suara:</div>
+            <div class="software-grid" style="grid-template-columns: 1fr 1fr; margin-bottom: 0.75rem;">
+              <button class="software-btn active" id="btn-voice-browser" onclick="setVoiceSource('browser')">
+                <i class="fa-brands fa-chrome"></i> Browser
+              </button>
+              <button class="software-btn" id="btn-voice-backend" onclick="setVoiceSource('backend')">
+                <i class="fa-solid fa-server"></i> Backend Server
+              </button>
+            </div>
+          </div>
+
+          <!-- Backend Device Selector Panel -->
+          <div id="backend-device-panel" style="display: none; margin-bottom: 0.75rem;">
+            <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.25rem;">Pilih Mikrofon Backend (Headset/Earphone/TWS):</div>
+            <select id="backend-device-select" class="custom-select" onchange="onBackendDeviceChange(event)">
+              <option value="default">Default System Mic (Backend)</option>
+            </select>
+            <div style="font-size: 0.75rem; color: var(--cyan); display: flex; align-items: flex-start; gap: 0.35rem; line-height: 1.3;">
+              <i class="fa-solid fa-circle-info" style="margin-top: 2px;"></i>
+              <span>Hubungkan headset/earphone/TWS Anda sebelum memilih dari daftar di atas.</span>
+            </div>
+          </div>
+
+          <!-- Browser Info Panel -->
+          <div id="browser-info-panel" style="margin-bottom: 0.75rem;">
+            <div style="font-size: 0.75rem; color: var(--text-muted); display: flex; align-items: flex-start; gap: 0.35rem; line-height: 1.3;">
+              <i class="fa-solid fa-circle-info" style="margin-top: 2px;"></i>
+              <span>Browser menggunakan mikrofon default sistem. Pastikan headset/TWS Anda diatur sebagai default audio input pada pengaturan OS/browser Anda.</span>
+            </div>
+          </div>
+
+          <div
+            class="controls-grid"
+            style="grid-template-columns: 1fr 1fr; margin-bottom: 0.5rem"
+          >
+            <button class="btn btn-primary" onclick="toggleVoice(true)">
+              Mulai Dengar
+            </button>
+            <button class="btn" onclick="toggleVoice(false)">
+              Berhenti
+            </button>
+          </div>
+          <button class="btn btn-warning" id="btn-voice-mute" onclick="toggleVoiceMute()" style="width: 100%; margin-bottom: 1rem; border-radius: 18px; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+            <i class="fa-solid fa-microphone-slash"></i> Mute Suara
+          </button>
+          <div class="voice-text-box" id="voice-text">
+            Teks yang diucapkan akan muncul di sini...
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="api-config">
+      API:
+      <input
+        type="text"
+        id="api-url"
+        value="http://127.0.0.1:5005"
+        style="
+          background: transparent;
+          border: none;
+          color: white;
+          border-bottom: 1px solid gray;
+        "
+      />
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
