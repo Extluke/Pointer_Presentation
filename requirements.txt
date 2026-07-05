@@ -10,3 +10,4 @@ deep-sort-realtime==1.3.2
 mediapipe==0.10.9
 SpeechRecognition==3.17.0
 sounddevice==0.5.5
+PyAudio==0.2.14
